@@ -58,7 +58,7 @@ class JiraSearch(object):
         return content['issues']
 
 
-def build_graph_data(start_issue_key, jira, excludes, show_directions, directions, includes, ignore_closed, ignore_epic):
+def build_graph_data(start_issue_key, jira, excludes, show_directions, directions, includes, ignore_closed, ignore_epic, ignore_subtasks):
     """ Given a starting image key and the issue-fetching function build up the GraphViz data representing relationships
         between issues. This will consider both subtasks and issue links.
     """
@@ -144,25 +144,26 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
 
         graph.append(create_node_text(issue_key, fields['summary']))
 
-        if fields['issuetype']['name'] == 'Epic' and not ignore_epic:
-            issues = jira.query('"Epic Link" = "%s"' % issue_key)
-            for subtask in issues:
-                subtask_key = get_key(subtask)
-                log(subtask_key + ' => references epic => ' + issue_key)
-                node = '{}->{}[color=orange]'.format(
-                    create_node_text(issue_key, fields['summary']),
-                    create_node_text(subtask_key, subtask['fields']['summary']) )
-                graph.append(node)
-                children.append(subtask_key)
-        if fields.has_key('subtasks'):
-            for subtask in fields['subtasks']:
-                subtask_key = get_key(subtask)
-                log(issue_key + ' => has subtask => ' + subtask_key)
-                node = '{}->{}[color=blue][label="subtask"]'.format (
+        if not ignore_subtasks:
+            if fields['issuetype']['name'] == 'Epic' and not ignore_epic:
+                issues = jira.query('"Epic Link" = "%s"' % issue_key)
+                for subtask in issues:
+                    subtask_key = get_key(subtask)
+                    log(subtask_key + ' => references epic => ' + issue_key)
+                    node = '{}->{}[color=orange]'.format(
                         create_node_text(issue_key, fields['summary']),
-                        create_node_text(subtask_key, subtask['fields']['summary']))
-                graph.append(node)
-                children.append(subtask_key)
+                        create_node_text(subtask_key, subtask['fields']['summary']) )
+                    graph.append(node)
+                    children.append(subtask_key)
+            if fields.has_key('subtasks') and not ignore_subtasks:
+                for subtask in fields['subtasks']:
+                    subtask_key = get_key(subtask)
+                    log(issue_key + ' => has subtask => ' + subtask_key)
+                    node = '{}->{}[color=blue][label="subtask"]'.format (
+                            create_node_text(issue_key, fields['summary']),
+                            create_node_text(subtask_key, subtask['fields']['summary']))
+                    graph.append(node)
+                    children.append(subtask_key)
         if fields.has_key('issuelinks'):
             for other_link in fields['issuelinks']:
                 result = process_link(fields, issue_key, other_link)
@@ -214,6 +215,7 @@ def parse_args():
     parser.add_argument('-i', '--issue-include', dest='includes', default='', help='Include issue keys')
     parser.add_argument('-s', '--show-directions', dest='show_directions', default=['inward', 'outward'], help='which directions to show (inward,outward)')
     parser.add_argument('-d', '--directions', dest='directions', default=['inward', 'outward'], help='which directions to walk (inward,outward)')
+    parser.add_argument('-t', '--ignore-subtasks', action='store_true', default=False, help='Don''t include sub-tasks issues')
     parser.add_argument('issues', nargs='+', help='The issue key (e.g. JRADEV-1107, JRADEV-1391)')
 
     return parser.parse_args()
@@ -243,7 +245,7 @@ def main():
 
     graph = []
     for issue in options.issues:
-        graph = graph + build_graph_data(issue, jira, options.excludes, options.show_directions, options.directions, options.includes, options.closed, options.ignore_epic)
+        graph = graph + build_graph_data(issue, jira, options.excludes, options.show_directions, options.directions, options.includes, options.closed, options.ignore_epic, options.ignore_subtasks)
 
     if options.local:
         print_graph(filter_duplicates(graph))
