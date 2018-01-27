@@ -58,7 +58,7 @@ class JiraSearch(object):
         return content['issues']
 
 
-def build_graph_data(start_issue_key, jira, excludes, show_directions, directions, includes, ignore_closed, ignore_epic, ignore_subtasks):
+def build_graph_data(start_issue_key, jira, excludes, show_directions, directions, includes, ignore_closed, ignore_epic, ignore_subtasks, traverse):
     """ Given a starting image key and the issue-fetching function build up the GraphViz data representing relationships
         between issues. This will consider both subtasks and issue links.
     """
@@ -142,6 +142,10 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
             if issue['fields']['status']['name'] in 'Closed':
                 return graph
 
+        if not traverse and ((proj_start + '-') not in issue_key):
+            log('Skipping ' + issue_key + ' by not traversing to a different project (than ' + proj_start + ')')
+            return graph
+
         graph.append(create_node_text(issue_key, fields['summary']))
 
         if not ignore_subtasks:
@@ -177,6 +181,7 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
             walk(child, graph)
         return graph
 
+    proj_start = start_issue_key.split('-', 1)[0]
     return walk(start_issue_key, [])
 
 
@@ -216,6 +221,7 @@ def parse_args():
     parser.add_argument('-s', '--show-directions', dest='show_directions', default=['inward', 'outward'], help='which directions to show (inward,outward)')
     parser.add_argument('-d', '--directions', dest='directions', default=['inward', 'outward'], help='which directions to walk (inward,outward)')
     parser.add_argument('-t', '--ignore-subtasks', action='store_true', default=False, help='Don''t include sub-tasks issues')
+    parser.add_argument('-T', '--dont-traverse', dest='traverse', action='store_false', default=True, help='Do not traverse to other projects')
     parser.add_argument('issues', nargs='+', help='The issue key (e.g. JRADEV-1107, JRADEV-1391)')
 
     return parser.parse_args()
@@ -245,7 +251,7 @@ def main():
 
     graph = []
     for issue in options.issues:
-        graph = graph + build_graph_data(issue, jira, options.excludes, options.show_directions, options.directions, options.includes, options.closed, options.ignore_epic, options.ignore_subtasks)
+        graph = graph + build_graph_data(issue, jira, options.excludes, options.show_directions, options.directions, options.includes, options.closed, options.ignore_epic, options.ignore_subtasks, options.traverse)
 
     if options.local:
         print_graph(filter_duplicates(graph))
