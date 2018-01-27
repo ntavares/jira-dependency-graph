@@ -18,7 +18,6 @@ from collections import OrderedDict
 GOOGLE_CHART_URL = 'http://chart.apis.google.com/chart'
 MAX_SUMMARY_LENGTH = 30
 
-
 def log(*args):
     print(*args, file=sys.stderr)
 
@@ -71,11 +70,16 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
         return issue['key']
 
     def get_status_color(status_field):
-        if status_field['statusCategory']['name'].upper() in ['IN PROGRESS']:
+        if status_field['name'].upper() in ['IN PROGRESS', 'DOING']:
             return 'yellow'
-        elif status_field['statusCategory']['name'].upper() in ['DONE']:
+        elif status_field['name'].upper() in ['UNDER REVIEW', 'READY FOR REVIEW']:
+            return 'orange'
+        elif status_field['name'].upper() in ['CLOSED', 'VERIFIED']:
             return 'green'
         return 'white'
+
+    def get_uri(issue_key):
+        return 'https://jira.portavita.nl:8443/browse/' + issue_key
 
     def create_node_text(issue_key, summary, status, islink):
         # truncate long labels with "...", but only if the three dots are
@@ -139,7 +143,6 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
                 create_node_text(linked_issue_key, linked_issue['fields']['summary'], linked_issue['fields']['status'], True),
                 link_type, extra)
 
-
         return linked_issue_key, node
 
     # since the graph can be cyclic we need to prevent infinite recursion
@@ -161,7 +164,7 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
             log('Skipping ' + issue_key + ' by not traversing to a different project (than ' + proj_start + ')')
             return graph
 
-        graph.append(create_node_text(issue_key, fields['summary']))
+        graph.append(create_node_text(issue_key, fields['summary'], fields['status'], False))
 
         if not ignore_subtasks:
             if fields['issuetype']['name'] == 'Epic' and not ignore_epic:
@@ -170,8 +173,8 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
                     subtask_key = get_key(subtask)
                     log(subtask_key + ' => references epic => ' + issue_key)
                     node = '{}->{}[color=orange]'.format(
-                        create_node_text(issue_key, fields['summary']),
-                        create_node_text(subtask_key, subtask['fields']['summary']) )
+                        create_node_text(issue_key, fields['summary'], fields['status'], True),
+                        create_node_text(subtask_key, subtask['fields']['summary'], subtask['fields']['status'], True) )
                     graph.append(node)
                     children.append(subtask_key)
             if fields.has_key('subtasks') and not ignore_subtasks:
@@ -179,15 +182,15 @@ def build_graph_data(start_issue_key, jira, excludes, show_directions, direction
                     subtask_key = get_key(subtask)
                     log(issue_key + ' => has subtask => ' + subtask_key)
                     node = '{}->{}[color=blue][label="subtask"]'.format (
-                            create_node_text(issue_key, fields['summary']),
-                            create_node_text(subtask_key, subtask['fields']['summary']))
+                            create_node_text(issue_key, fields['summary'], fields['status'], True),
+                            create_node_text(subtask_key, subtask['fields']['summary'], subtask['fields']['status'], True))
                     graph.append(node)
                     children.append(subtask_key)
         if fields.has_key('issuelinks'):
             for other_link in fields['issuelinks']:
                 result = process_link(fields, issue_key, other_link)
                 if result is not None:
-                    log('Appending ' + result[0])
+                    log('Appending ' + result[0] + ', linked_with=' + str(result[1]))
                     children.append(result[0])
                     if result[1] is not None:
                         graph.append(result[1])
@@ -235,9 +238,9 @@ def parse_args():
     parser.add_argument('-i', '--issue-include', dest='includes', default='', help='Include issue keys')
     parser.add_argument('-s', '--show-directions', dest='show_directions', default=['inward', 'outward'], help='which directions to show (inward,outward)')
     parser.add_argument('-d', '--directions', dest='directions', default=['inward', 'outward'], help='which directions to walk (inward,outward)')
+    parser.add_argument('-ns', '--node-shape', dest='node_shape', default='ellipse', help='which shape to use for nodes (circle, box, etc)')
     parser.add_argument('-t', '--ignore-subtasks', action='store_true', default=False, help='Don''t include sub-tasks issues')
     parser.add_argument('-T', '--dont-traverse', dest='traverse', action='store_false', default=True, help='Do not traverse to other projects')
-    parser.add_argument('-ns', '--node-shape', dest='node_shape', default='ellipse', help='which shape to use for nodes (circle, box, etc)')
     parser.add_argument('issues', nargs='+', help='The issue key (e.g. JRADEV-1107, JRADEV-1391)')
 
     return parser.parse_args()
