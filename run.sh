@@ -1,5 +1,7 @@
 #!/bin/sh
 
+FORMAT=svg
+
 if [ -z "$1" ] ; then
    echo "Please specify the starting issue number"
    exit 1
@@ -10,10 +12,14 @@ shift
 JIRAUSER=$(cat jira.user)
 JIRAPWD=$(cat jira.pwd)
 JIRAURL=$(cat jira.url)
+
+echo Connecting to $JIRAURL as $JIRAUSER
+
 python jira-dependency-graph.py \
 "--user=$JIRAUSER" \
 "--password=$JIRAPWD" \
 "--jira=$JIRAURL" \
+--local \
 --exclude-link 'is blocked by' \
 --exclude-link 'duplicates' \
 --exclude-link 'is duplicated by' \
@@ -27,10 +33,8 @@ python jira-dependency-graph.py \
 --exclude-link 'Covered by test case' \
 --exclude-link 'is caused by' \
 --exclude-link 'is cause of' \
---local \
+-ns box \
 $JIRAISSUE $* > $JIRAISSUE.dot
 
-##unflatten -f -l 4 -c 16 $JIRAISSUE.dot  | dot | gvpack -array_t6 | neato -s -n2 -Tpng -o $JIRAISSUE.png
-unflatten -f -l 4 -c 16 $JIRAISSUE.dot  | dot | gvpack -array_t6 | neato -s -n2 -Tsvg -o $JIRAISSUE.svg
-
+unflatten -f -l 4 -c 16 $JIRAISSUE.dot  | dot | gvpack -array_t6 | neato -s -n2 -T$FORMAT -o $JIRAISSUE.$FORMAT
 
